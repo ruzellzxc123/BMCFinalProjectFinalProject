@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /products/{product} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /cart/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /orders/{orderId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && 
+                   (request.auth.uid == resource.data.userId || 
+                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+
+    match /admin_orders/{document=**} {
+      allow read, write: if request.auth != null && 
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && 
+                   (request.auth.uid == request.resource.data.userId || 
+                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      allow update: if request.auth != null && 
+                   (request.auth.uid == resource.data.userId || 
+                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+    
+    // Chat room rules
+    match /chats/{chatId} {
+      // Users can read their own chat room
+      allow read: if request.auth != null && 
+                 (request.auth.uid == chatId || 
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      
+      // Users can create their own chat room
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId &&
+                   chatId == request.auth.uid;
+      
+      // Both users and admins can update chat metadata (like unread counts)
+      allow update: if request.auth != null && 
+                   (request.auth.uid == chatId || 
+                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Users can read messages in their own chat
+        allow read: if request.auth != null && 
+                   (request.auth.uid == chatId || 
+                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+        
+        // Users can send messages to their own chat
+        allow create: if request.auth != null && 
+                     request.resource.data.senderId == request.auth.uid &&
+                     (chatId == request.auth.uid || 
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+      }
+    }
+  }
+}
